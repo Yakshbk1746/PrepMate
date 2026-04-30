@@ -6,11 +6,9 @@ import {
   signInWithPopup,
   signOut,
   sendPasswordResetEmail,
-  GoogleAuthProvider,
 } from 'firebase/auth';
 import { auth, googleProvider } from '../config/firebaseConfig';
 
-const GOOGLE_CALENDAR_TOKEN_KEY = 'prepmateGoogleCalendarToken';
 
 // ─── Helper: map Firebase error codes to friendly messages ───────────────────
 const getFriendlyError = (code) => {
@@ -18,10 +16,15 @@ const getFriendlyError = (code) => {
     'auth/user-not-found':       'No account found with this email.',
     'auth/wrong-password':       'Incorrect password. Please try again.',
     'auth/invalid-email':        'Please enter a valid email address.',
+    'auth/invalid-credential':   'Invalid credentials. Please check your email and password.',
     'auth/email-already-in-use': 'An account with this email already exists.',
     'auth/weak-password':        'Password must be at least 6 characters.',
+    'auth/user-disabled':        'This account has been disabled. Please contact support.',
+    'auth/operation-not-allowed':'Email/password sign-in is disabled. Contact support.',
     'auth/too-many-requests':    'Too many attempts. Please try again later.',
     'auth/popup-closed-by-user': 'Google sign-in was cancelled.',
+    'auth/account-exists-with-different-credential': 'This email is already linked with a different sign-in method. Use that method to continue.',
+    'auth/popup-blocked': 'Popup was blocked by the browser. Please allow popups and try again.',
     'auth/network-request-failed': 'Network error. Check your connection.',
   };
   return map[code] || 'Something went wrong. Please try again.';
@@ -51,11 +54,6 @@ export const registerWithEmail = async (email, password) => {
 export const loginWithGoogle = async () => {
   try {
     const result = await signInWithPopup(auth, googleProvider);
-    const credential = GoogleAuthProvider.credentialFromResult(result);
-    const accessToken = credential?.accessToken || '';
-    if (accessToken) {
-      localStorage.setItem(GOOGLE_CALENDAR_TOKEN_KEY, accessToken);
-    }
     return result.user;
   } catch (err) {
     throw new Error(getFriendlyError(err.code));

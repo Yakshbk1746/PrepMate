@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/authContext';
+import { useHabits } from '../context/HabitContext';
 import { loginWithGoogle } from '../firebase/authService';
 import {
   createTask,
@@ -16,17 +17,12 @@ import {
   getDashboardData,
   getDashboardStats,
   getDistractions,
-  getHabits,
   getReflections,
   markRevisionComplete,
-  toggleHabitDate,
   updateTask,
 } from '../services/api';
-import {
-  clearGoogleCalendarToken,
-  fetchGoogleCalendarEventsByDate,
-  getGoogleCalendarToken,
-} from '../services/googleCalendarService';
+
+
 
 const fallbackTasks = [
   { id: 1, title: 'Solve 20 DSA problems', completed: false },
@@ -95,7 +91,7 @@ const toDashboardHabits = (habitList = []) => {
   const today = new Date().toISOString().split('T')[0];
 
   return habitList.map((habit) => {
-    const completedDates = parseCompletedDates(habit?.completedDates);
+    const completedDates = Array.isArray(habit.completedDates) ? habit.completedDates : [];
     return {
       id: habit?.id,
       label: habit?.name || 'Untitled Habit',
@@ -201,10 +197,7 @@ const Dashboard = () => {
   const [currentDate] = useState(new Date());
   const [calMonth, setCalMonth] = useState(new Date().getMonth());
   const [calYear, setCalYear] = useState(new Date().getFullYear());
-  const [googleEventsByDate, setGoogleEventsByDate] = useState({});
-  const [isGoogleCalendarLoading, setIsGoogleCalendarLoading] = useState(false);
-  const [googleCalendarError, setGoogleCalendarError] = useState('');
-  const [hasGoogleCalendarToken, setHasGoogleCalendarToken] = useState(() => Boolean(getGoogleCalendarToken()));
+  
 
   const [quoteIdx, setQuoteIdx] = useState(0);
   const quotesList = [
@@ -291,51 +284,7 @@ const Dashboard = () => {
       .catch(console.error);
   }, [userId]);
 
-  useEffect(() => {
-    setHasGoogleCalendarToken(Boolean(getGoogleCalendarToken()));
-  }, [user?.uid]);
-
-  useEffect(() => {
-    const token = getGoogleCalendarToken();
-    if (!token) {
-      setGoogleEventsByDate({});
-      setGoogleCalendarError('');
-      return;
-    }
-
-    const monthStart = new Date(Date.UTC(calYear, calMonth, 1));
-    const monthEnd = new Date(Date.UTC(calYear, calMonth + 1, 1));
-
-    setIsGoogleCalendarLoading(true);
-    setGoogleCalendarError('');
-
-    fetchGoogleCalendarEventsByDate({ token, monthStart, monthEnd })
-      .then((eventsByDate) => {
-        setGoogleEventsByDate(eventsByDate);
-      })
-      .catch((error) => {
-        console.error(error);
-        if (error?.code === 'GOOGLE_CALENDAR_UNAUTHORIZED') {
-          clearGoogleCalendarToken();
-          setHasGoogleCalendarToken(false);
-        }
-        setGoogleEventsByDate({});
-        setGoogleCalendarError('Unable to sync Google Calendar. Reconnect and try again.');
-      })
-      .finally(() => {
-        setIsGoogleCalendarLoading(false);
-      });
-  }, [calYear, calMonth, hasGoogleCalendarToken]);
-
-  const connectGoogleCalendar = async () => {
-    setGoogleCalendarError('');
-    try {
-      await loginWithGoogle();
-      setHasGoogleCalendarToken(Boolean(getGoogleCalendarToken()));
-    } catch (error) {
-      setGoogleCalendarError(error?.message || 'Google Calendar connect failed.');
-    }
-  };
+  
   
   const dailyQuote = quotesList[quoteIdx];
 
@@ -465,58 +414,13 @@ const Dashboard = () => {
     }
   };
 
-  // Daily Habits state
-  const [habits, setHabits] = useState([]);
+  // Daily Habits - use context
+  const { habits: contextHabits, loadHabits: loadContextHabits, toggleCompletion: toggleContextHabit } = useHabits();
+  const displayHabits = useMemo(() => toDashboardHabits(contextHabits), [contextHabits]);
 
-  const toggleHabit = (id) => {
+  const toggleHabit = async (id) => {
     const today = new Date().toISOString().split('T')[0];
-    let previousHabit = null;
-
-    setHabits((prev) =>
-      prev.map((habit) => {
-        if (habit.id !== id) return habit;
-
-        previousHabit = habit;
-
-        const completedDates = Array.isArray(habit.completedDates) ? [...habit.completedDates] : [];
-        const doneToday = completedDates.includes(today);
-
-        if (doneToday) {
-          const nextCompletedDates = completedDates.filter((date) => date !== today);
-          return {
-            ...habit,
-            done: false,
-            completedDates: nextCompletedDates,
-            streak: Math.max(0, habit.streak - 1),
-          };
-        }
-
-        const newStreak = habit.streak + 1;
-        return {
-          ...habit,
-          done: true,
-          completedDates: [today, ...completedDates],
-          streak: newStreak,
-          longestStreak: Math.max(newStreak, habit.longestStreak),
-        };
-      })
-    );
-
-    if (!previousHabit) return;
-
-    toggleHabitDate(id, today)
-      .then((saved) => {
-        setHabits((prev) =>
-          prev.map((habit) =>
-            habit.id === id ? toDashboardHabits([saved])[0] : habit
-          )
-        );
-      })
-      .catch((error) => {
-        console.error(error);
-        // Revert optimistic toggle if backend fails.
-        setHabits((prev) => prev.map((habit) => (habit.id === id ? previousHabit : habit)));
-      });
+    await toggleContextHabit(id, today);
   };
 
   useEffect(() => {
@@ -531,16 +435,16 @@ const Dashboard = () => {
           return;
         }
 
-        const [habitData, distractionData] = await Promise.all([
-          getHabits(userId),
-          getDistractions(userId),
-        ]);
+        // Load habits from context
+        await loadContextHabits(userId);
+
+        // Load distractions
+        const distractionData = await getDistractions(userId);
 
         if (!isMounted) return;
-        setHabits(toDashboardHabits(habitData));
         setDistractions(toDashboardDistractions(distractionData));
       } catch (error) {
-        console.error('Failed to load habits/distractions:', error);
+        console.error('Failed to load sidebar data:', error);
         if (!isMounted) return;
         setSidebarError('Failed to load habits/distractions.');
       } finally {
@@ -779,20 +683,6 @@ const Dashboard = () => {
                 <h2 className="font-semibold text-slate-800 dark:text-white text-sm">{calMonthName}</h2>
                 <button onClick={nextMonth} className="p-1 hover:bg-slate-100 dark:hover:bg-white/5 rounded text-slate-500 hover:text-slate-800 dark:hover:text-white transition-colors"><ChevronRight size={16} /></button>
               </div>
-              <div className="mb-3 flex items-center justify-between gap-2">
-                <span className="text-[10px] text-slate-500 dark:text-slate-400">
-                  {hasGoogleCalendarToken ? (isGoogleCalendarLoading ? 'Syncing Google Calendar...' : 'Google Calendar synced') : 'Google Calendar not connected'}
-                </span>
-                <button
-                  onClick={connectGoogleCalendar}
-                  className="px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/30 text-blue-600 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-500/20 transition-colors"
-                >
-                  {hasGoogleCalendarToken ? 'Reconnect' : 'Connect'}
-                </button>
-              </div>
-              {googleCalendarError && (
-                <p className="mb-2 text-[10px] text-red-500 dark:text-red-300">{googleCalendarError}</p>
-              )}
               <div className="grid grid-cols-7 gap-1 text-center text-xs mb-2">
                 {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, i) => (
                   <div key={i} className="text-slate-500 font-medium py-1">{day}</div>
@@ -807,20 +697,17 @@ const Dashboard = () => {
                   const hasTask = tasks.some((task) => task.date === isoDay);
                   const hasRevision = revisions.some((revision) => revision.dueDate === isoDay);
                   const hasDeadline = deadlineDates.includes(isoDay);
-                  const googleEventsCount = googleEventsByDate[isoDay] || 0;
-                  const hasGoogleEvent = googleEventsCount > 0;
                   return (
                     <div key={day} className={`aspect-square flex items-center justify-center text-xs rounded cursor-pointer transition-all ${
                       isToday ? 'bg-blue-600 dark:bg-blue-500 text-white font-bold' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10'
                     }`}>
                       <span className="relative">
                         {day}
-                        {(hasTask || hasRevision || hasDeadline || hasGoogleEvent) && (
+                        {(hasTask || hasRevision || hasDeadline) && (
                           <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 flex items-center gap-0.5">
                             {hasTask && <span className="w-1 h-1 rounded-full bg-emerald-400" />}
                             {hasRevision && <span className="w-1 h-1 rounded-full bg-blue-400" />}
                             {hasDeadline && <span className="w-1 h-1 rounded-full bg-red-500" />}
-                            {hasGoogleEvent && <span className="w-1 h-1 rounded-full bg-amber-400" title={`${googleEventsCount} Google event(s)`} />}
                           </span>
                         )}
                       </span>
@@ -899,11 +786,11 @@ const Dashboard = () => {
               </h2>
             </div>
             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-              {habits.filter(h => h.done).length}/{habits.length}
+              {displayHabits.filter(h => h.done).length}/{displayHabits.length}
             </span>
           </div>
           <div className="space-y-2">
-            {isLoadingSidebar && habits.length === 0 && (
+            {isLoadingSidebar && displayHabits.length === 0 && (
               <p className="text-xs text-slate-500 dark:text-slate-400">Loading habits...</p>
             )}
             {sidebarError && (
@@ -914,11 +801,7 @@ const Dashboard = () => {
                     if (!userId) return;
                     setSidebarError('');
                     setIsLoadingSidebar(true);
-                    Promise.all([getHabits(userId), getDistractions(userId)])
-                      .then(([habitData, distractionData]) => {
-                        setHabits(toDashboardHabits(habitData));
-                        setDistractions(toDashboardDistractions(distractionData));
-                      })
+                    loadContextHabits(userId)
                       .catch((error) => {
                         console.error(error);
                       })
@@ -930,7 +813,7 @@ const Dashboard = () => {
                 </button>
               </div>
             )}
-            {habits.map((habit) => (
+            {displayHabits.map((habit) => (
               <div key={habit.id} onClick={() => toggleHabit(habit.id)} className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-white/5 cursor-pointer group transition-colors">
                 <div className={`w-4 h-4 border-2 rounded flex items-center justify-center shrink-0 transition-all ${
                   habit.done ? 'border-emerald-500 bg-emerald-500/20' : 'border-slate-300 dark:border-slate-600 group-hover:border-emerald-400'
@@ -946,7 +829,7 @@ const Dashboard = () => {
             ))}
           </div>
           <div className="h-1.5 w-full bg-slate-200 dark:bg-white/5 rounded-full overflow-hidden mt-3">
-            <div className="h-full bg-violet-500 transition-all duration-1000" style={{ width: `${habits.length === 0 ? 0 : (habits.filter(h => h.done).length / habits.length) * 100}%` }} />
+            <div className="h-full bg-violet-500 transition-all duration-1000" style={{ width: `${displayHabits.length === 0 ? 0 : (displayHabits.filter(h => h.done).length / displayHabits.length) * 100}%` }} />
           </div>
           <button onClick={() => navigate('/habits')} className="w-full mt-3 py-2 text-xs font-bold text-violet-600 dark:text-violet-400 hover:text-violet-700 dark:hover:text-violet-300 bg-violet-50 dark:bg-violet-500/10 hover:bg-violet-100 dark:hover:bg-violet-500/20 border border-violet-200 dark:border-violet-500/20 rounded-lg transition-colors flex items-center justify-center gap-1">
             Go to Habits <ChevronRight size={14} />

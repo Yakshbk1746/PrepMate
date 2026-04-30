@@ -41,7 +41,9 @@ public class UserController {
 
     @GetMapping("/firebase/{uid}")
     public ResponseEntity<User> getUserByFirebaseUid(@PathVariable String uid) {
-        return ResponseEntity.ok(userService.getUserByFirebaseUid(uid));
+        return userService.findUserByFirebaseUid(uid)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
     @PutMapping("/{id}")

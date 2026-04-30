@@ -1,76 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Flame, CheckCircle2, X, Trophy, TrendingUp, Edit2, Lightbulb } from 'lucide-react';
 import { useAuth } from '../context/authContext';
-import { getHabits, createHabit, updateHabit as updateHabitApi, toggleHabitDate, deleteHabit as deleteHabitApi } from '../services/api';
-import { showToast } from '../utils/toast';
-
-const resolveBackendUserId = (user, contextUserId) => {
-  if (contextUserId && Number.isInteger(Number(contextUserId))) return Number(contextUserId);
-
-  const candidateIds = [
-    user?.backendUserId,
-    user?.id,
-    localStorage.getItem('prepmateUserId'),
-    localStorage.getItem('backendUserId'),
-  ];
-
-  for (const candidate of candidateIds) {
-    const parsed = Number.parseInt(candidate, 10);
-    if (Number.isInteger(parsed) && parsed > 0) return parsed;
-  }
-
-  return null;
-};
-
-const normalizeCompletedDates = (value) => {
-  if (Array.isArray(value)) {
-    return value.filter(Boolean);
-  }
-
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    if (!trimmed) return [];
-
-    try {
-      const parsed = JSON.parse(trimmed);
-      return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
-    } catch {
-      return trimmed
-        .split(',')
-        .map((item) => item.trim())
-        .filter(Boolean);
-    }
-  }
-
-  return [];
-};
-
-const normalizeHabit = (habit) => ({
-  id: habit?.id,
-  name: habit?.name || 'Untitled Habit',
-  frequency: habit?.frequency || 'daily',
-  streak: Number.isFinite(Number(habit?.streak)) ? Number(habit.streak) : 0,
-  longestStreak: Number.isFinite(Number(habit?.longestStreak)) ? Number(habit.longestStreak) : 0,
-  completedDates: normalizeCompletedDates(habit?.completedDates),
-});
+import { useHabits } from '../context/HabitContext';
 
 const HabitsPage = () => {
-  const { user, backendUserId: contextUserId } = useAuth();
-  const [habits, setHabits] = useState([
-    { id: 1, name: 'Solve 20 DSA Problems', streak: 7, longestStreak: 12, completedDates: ['2026-03-12', '2026-03-11', '2026-03-10', '2026-03-09', '2026-03-08', '2026-03-07', '2026-03-06'] },
-    { id: 2, name: 'Read OS for 1 hour', streak: 3, longestStreak: 8, completedDates: ['2026-03-12', '2026-03-11', '2026-03-10'] },
-    { id: 3, name: 'Practice 50 Aptitude Questions', streak: 0, longestStreak: 5, completedDates: [] },
-  ]);
+  const { backendUserId } = useAuth();
+  const { habits, isLoading, loadHabits, createHabit, updateHabit, toggleCompletion, deleteHabit } = useHabits();
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingHabit, setEditingHabit] = useState(null);
 
+  // Load habits when user ID is available
   useEffect(() => {
-    const userId = resolveBackendUserId(user, contextUserId);
-    if (!userId) return;
-    getHabits(userId)
-      .then((data) => setHabits((Array.isArray(data) ? data : []).map(normalizeHabit)))
-      .catch(console.error);
-  }, [user, contextUserId]);
+    if (backendUserId) {
+      loadHabits(backendUserId);
+    }
+  }, [backendUserId, loadHabits]);
 
   // Generate last 21 days as date strings
   const getLast21Days = () => {
@@ -85,93 +29,28 @@ const HabitsPage = () => {
 
   const last21Days = getLast21Days();
 
-  const toggleCompletedToday = (id) => {
+  const handleToggleCompletion = async (habitId) => {
     const today = new Date().toISOString().split('T')[0];
-    let previousHabit = null;
-
-    setHabits(prev => prev.map(h => {
-      if (h.id !== id) return h;
-      previousHabit = h;
-      
-      const isCompletedToday = h.completedDates.includes(today);
-      
-      if (isCompletedToday) {
-        return {
-          ...h,
-          completedDates: h.completedDates.filter(d => d !== today),
-          done: false,
-        };
-      } else {
-        return {
-          ...h,
-          completedDates: [today, ...h.completedDates],
-          done: true,
-        };
-      }
-    }));
-
-    if (!previousHabit) return;
-
-    toggleHabitDate(id, today)
-      .then((saved) => {
-        const normalized = normalizeHabit(saved);
-        setHabits((prev) => prev.map((h) => (h.id === id ? normalized : h)));
-      })
-      .catch((error) => {
-        console.error(error);
-        setHabits((prev) => prev.map((h) => (h.id === id ? previousHabit : h)));
-      });
+    await toggleCompletion(habitId, today);
   };
 
-  const addHabit = (name, frequency) => {
-    const userId = resolveBackendUserId(user, contextUserId);
-    if (!userId) return;
-
-    const newHabit = {
-      id: Date.now(),
-      name,
-      frequency,
-      streak: 0,
-      longestStreak: 0,
-      completedDates: [],
-    };
-
-    createHabit(userId, { name: newHabit.name, frequency: newHabit.frequency, streak: 0, longestStreak: 0, completedDates: '[]' })
-      .then(saved => {
-        setHabits(prev => [...prev, normalizeHabit(saved)]);
-        showToast({ title: 'Habit Saved', message: `${newHabit.name} added.` });
-      })
-      .catch(console.error);
+  const handleAddHabit = async (name, frequency) => {
+    await createHabit(backendUserId, { name, frequency });
     setShowAddModal(false);
   };
 
-  const updateHabit = (id, name) => {
-    const currentHabit = habits.find((habit) => habit.id === id);
-    if (!currentHabit) {
+  const handleUpdateHabit = async (habitId, name) => {
+    const currentHabit = habits.find(h => h.id === habitId);
+    if (!currentHabit || !name.trim()) {
       setEditingHabit(null);
       return;
     }
-
-    updateHabitApi(id, {
-      name,
-      frequency: currentHabit.frequency || 'daily',
-      streak: currentHabit.streak,
-      longestStreak: currentHabit.longestStreak,
-      completedDates: JSON.stringify(currentHabit.completedDates),
-    })
-      .then(updated => {
-        setHabits(prev => prev.map(h => h.id === id ? normalizeHabit(updated) : h));
-        showToast({ title: 'Habit Updated', message: `${name} updated.` });
-      })
-      .catch(console.error);
+    await updateHabit(habitId, { name: name.trim() });
     setEditingHabit(null);
   };
 
-  const deleteHabit = (id) => {
-    deleteHabitApi(id).then(() => {
-      setHabits(prev => prev.filter(h => h.id !== id));
-      showToast({ title: 'Habit Deleted', message: 'Habit removed.', type: 'info' });
-    }).catch(console.error);
+  const handleDeleteHabit = async (habitId) => {
+    await deleteHabit(habitId);
     setEditingHabit(null);
   };
 
@@ -269,7 +148,7 @@ const HabitsPage = () => {
                     <div className="flex items-center gap-4 flex-1">
                       {/* TOGGLEABLE Checkbox */}
                       <button 
-                        onClick={() => toggleCompletedToday(habit.id)}
+                        onClick={() => handleToggleCompletion(habit.id)}
                         className={`w-10 h-10 rounded-full flex items-center justify-center transition-all shrink-0 ${
                           completedToday 
                             ? 'bg-emerald-500 hover:bg-emerald-600' 
@@ -284,8 +163,8 @@ const HabitsPage = () => {
                           <input 
                             type="text"
                             defaultValue={habit.name}
-                            onBlur={(e) => updateHabit(habit.id, e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && updateHabit(habit.id, e.target.value)}
+                            onBlur={(e) => handleUpdateHabit(habit.id, e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleUpdateHabit(habit.id, e.target.value)}
                             className="bg-white dark:bg-white/5 border border-slate-300 dark:border-white/10 rounded px-2 py-1 text-sm text-slate-900 dark:text-white outline-none focus:border-emerald-500"
                             autoFocus
                           />
@@ -314,7 +193,7 @@ const HabitsPage = () => {
                       <button onClick={() => setEditingHabit(habit)} className="p-2 hover:bg-blue-500/10 rounded text-slate-400 hover:text-blue-400">
                         <Edit2 size={14} />
                       </button>
-                      <button onClick={() => deleteHabit(habit.id)} className="p-2 hover:bg-red-500/10 rounded text-slate-400 hover:text-red-400">
+                      <button onClick={() => handleDeleteHabit(habit.id)} className="p-2 hover:bg-red-500/10 rounded text-slate-400 hover:text-red-400">
                         <X size={14} />
                       </button>
                     </div>
@@ -366,7 +245,7 @@ const HabitsPage = () => {
               e.preventDefault();
               const name = e.target.habitName.value.trim();
               const frequency = e.target.frequency.value;
-              if (name) addHabit(name, frequency);
+              if (name) handleAddHabit(name, frequency);
             }} className="space-y-4">
               <div>
                 <label className="text-xs text-slate-400 font-semibold block mb-2">Habit Name</label>

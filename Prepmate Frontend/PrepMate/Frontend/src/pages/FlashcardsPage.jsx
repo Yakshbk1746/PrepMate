@@ -33,14 +33,23 @@ const FlashcardsPage = () => {
 
     getUserByFirebaseUid(user.uid)
       .then((profile) => {
+        const resolved = plannerService.resolveProfileWithFallback(profile);
         const profileSubjects = plannerService
-          .getSubjects({ exam: profile?.exam, stream: profile?.stream })
+          .getSubjects(resolved)
           .filter(isAllowedFlashcardSubject);
         if (profileSubjects.length > 0) {
           setSubjects(profileSubjects);
         }
       })
-      .catch(console.error);
+      .catch(() => {
+        const resolved = plannerService.resolveProfileWithFallback(null);
+        const fallbackSubjects = plannerService
+          .getSubjects(resolved)
+          .filter(isAllowedFlashcardSubject);
+        if (fallbackSubjects.length > 0) {
+          setSubjects(fallbackSubjects);
+        }
+      });
   }, [user?.uid]);
 
   useEffect(() => {

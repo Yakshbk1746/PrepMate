@@ -95,8 +95,10 @@ const Login = () => {
   const isLoading = loadingEmail || loadingGoogle;
 
   const validateEmail = (email) => {
-    if (!email.trim()) return 'Email is required';
-    if (!/\S+@\S+\.\S+/.test(email)) return 'Enter a valid email';
+    const normalizeEmail = (e) => (e || '').replace(/[\u00A0\u200B-\u200D\uFEFF]/g, '').trim();
+    const norm = normalizeEmail(email);
+    if (!norm) return 'Email is required';
+    if (!/\S+@\S+\.\S+/.test(norm)) return 'Enter a valid email';
     return '';
   };
 
@@ -121,7 +123,8 @@ const Login = () => {
     setLoadingEmail(true);
 
     try {
-      await loginWithEmail(email, password);
+      const normalizeEmail = (e) => (e || '').replace(/[\u00A0\u200B-\u200D\uFEFF]/g, '').trim();
+      await loginWithEmail(normalizeEmail(email), password);
       navigate('/dashboard');
     } catch (err) {
       setGlobalError(err.message);
@@ -150,7 +153,8 @@ const Login = () => {
     }
     setGlobalError('');
     try {
-      await sendPasswordReset(email);
+      const normalizeEmail = (e) => (e || '').replace(/[\u00A0\u200B-\u200D\uFEFF]/g, '').trim();
+      await sendPasswordReset(normalizeEmail(email));
       setResetSent(true);
     } catch (err) {
       setGlobalError(err.message);

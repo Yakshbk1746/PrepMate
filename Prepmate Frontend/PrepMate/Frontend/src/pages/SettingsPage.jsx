@@ -17,6 +17,8 @@ const SettingsPage = () => {
   const [selectedExam, setSelectedExam] = useState('GATE');
   const [stream, setStream] = useState('');
   const [examDate, setExamDate] = useState('');
+  const [isEditingExam, setIsEditingExam] = useState(false);
+  const [savedExamDetails, setSavedExamDetails] = useState({ exam: 'GATE', stream: '', examDate: '' });
 
   // Preferences
   const [pomodoroTime, setPomodoroTime] = useState('25');
@@ -33,6 +35,7 @@ const SettingsPage = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
   const [examOptions, setExamOptions] = useState(['GATE', 'UPSC', 'SSC CGL', 'SSC CHSL', 'CAT', 'JEE', 'NEET', 'CLAT', 'NDA', 'Other']);
+  const [examStreams, setExamStreams] = useState({});
 
   useEffect(() => {
     getSignupConfig()
@@ -40,6 +43,9 @@ const SettingsPage = () => {
         const exams = Array.isArray(config?.exams) ? config.exams.filter(Boolean) : [];
         if (exams.length > 0) {
           setExamOptions(exams);
+        }
+        if (config?.streams && typeof config.streams === 'object') {
+          setExamStreams(config.streams);
         }
       })
       .catch(console.error);
@@ -56,6 +62,11 @@ const SettingsPage = () => {
         setSelectedExam(data?.exam || 'GATE');
         setStream(data?.stream || '');
         setExamDate(data?.examDate || '');
+        setSavedExamDetails({
+          exam: data?.exam || 'GATE',
+          stream: data?.stream || '',
+          examDate: data?.examDate || '',
+        });
         setPomodoroTime(String(data?.pomodoroTime || '25'));
         setWeekStart(data?.weekStart || 'Monday');
         setTimeFormat(data?.timeFormat || '12h');
@@ -136,6 +147,11 @@ const SettingsPage = () => {
   const handleSaveSettings = () => {
     if (!backendUserId) return;
 
+    if (isEditingExam && !selectedExam.trim()) {
+      setSaveMessage('Please select a target exam before saving.');
+      return;
+    }
+
     setIsSaving(true);
     setSaveMessage('');
 
@@ -154,6 +170,13 @@ const SettingsPage = () => {
       breakReminders,
     })
       .then(() => {
+        setSavedExamDetails({ exam: selectedExam, stream, examDate });
+        setIsEditingExam(false);
+        try {
+          localStorage.setItem('signupProfile', JSON.stringify({ exam: selectedExam, stream, examDate }));
+        } catch {
+          // ignore localStorage errors
+        }
         setSaveMessage('Settings saved successfully.');
       })
       .catch((err) => {
@@ -169,6 +192,7 @@ const SettingsPage = () => {
   const inputClass = "w-full px-4 py-2.5 rounded-xl bg-white dark:bg-white/[0.05] border border-slate-300 dark:border-white/[0.1] text-slate-900 dark:text-slate-200 outline-none focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/20 transition-all text-sm";
   const labelClass = "text-xs text-slate-500 font-semibold block mb-1.5";
   const sectionTitleClass = "text-base font-bold text-slate-900 dark:text-white flex items-center gap-2 mb-4";
+  const examStreamOptions = Array.isArray(examStreams?.[selectedExam]) ? examStreams[selectedExam] : [];
 
   return (
     <div className="space-y-6 max-w-3xl">
@@ -243,24 +267,74 @@ const SettingsPage = () => {
           <BookOpen size={18} className="text-emerald-400" />
           Exam Details
         </h3>
-        <div className="space-y-4">
-          <div>
-            <label className={labelClass}>Target Exam</label>
-            <select value={selectedExam} onChange={(e) => setSelectedExam(e.target.value)} className={inputClass}>
-              {examOptions.map(exam => (
-                <option key={exam} value={exam}>{exam}</option>
-              ))}
-            </select>
+        {!isEditingExam ? (
+          <div className="space-y-4">
+            <div>
+              <label className={labelClass}>Target Exam</label>
+              <div className={`${inputClass} flex items-center justify-between bg-slate-50 dark:bg-white/[0.03]`}>{selectedExam || 'Not set'}</div>
+            </div>
+            <div>
+              <label className={labelClass}>Stream</label>
+              <div className={`${inputClass} flex items-center justify-between bg-slate-50 dark:bg-white/[0.03]`}>{stream || 'Not set'}</div>
+            </div>
+            <div>
+              <label className={labelClass}>Exam Date</label>
+              <div className={`${inputClass} flex items-center justify-between bg-slate-50 dark:bg-white/[0.03]`}>{examDate || 'Not set'}</div>
+            </div>
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => setIsEditingExam(true)}
+                className="px-4 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-500 text-xs font-bold hover:bg-emerald-500/20 transition-all"
+              >
+                Change Exam
+              </button>
+            </div>
           </div>
-          <div>
-            <label className={labelClass}>Stream</label>
-            <input type="text" value={stream} onChange={(e) => setStream(e.target.value)} placeholder="e.g., Computer Science" className={inputClass} />
+        ) : (
+          <div className="space-y-4">
+            <div>
+              <label className={labelClass}>Target Exam</label>
+              <select value={selectedExam} onChange={(e) => { setSelectedExam(e.target.value); setStream(''); }} className={inputClass}>
+                {examOptions.map(exam => (
+                  <option key={exam} value={exam}>{exam}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className={labelClass}>Stream</label>
+              {examStreamOptions.length > 0 ? (
+                <select value={stream} onChange={(e) => setStream(e.target.value)} className={inputClass}>
+                  <option value="">Select stream</option>
+                  {examStreamOptions.map((option) => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
+                </select>
+              ) : (
+                <input type="text" value={stream} onChange={(e) => setStream(e.target.value)} placeholder="e.g., Computer Science" className={inputClass} />
+              )}
+            </div>
+            <div>
+              <label className={labelClass}>Exam Date</label>
+              <input type="date" value={examDate} onChange={(e) => setExamDate(e.target.value)} className={inputClass} />
+            </div>
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedExam(savedExamDetails.exam);
+                  setStream(savedExamDetails.stream);
+                  setExamDate(savedExamDetails.examDate);
+                  setIsEditingExam(false);
+                }}
+                className="px-4 py-2 rounded-lg bg-slate-100 dark:bg-white/[0.05] border border-slate-300 dark:border-white/[0.1] text-slate-600 dark:text-slate-300 text-xs font-bold hover:bg-slate-200 dark:hover:bg-white/[0.08] transition-all"
+              >
+                Cancel
+              </button>
+              <span className="text-[10px] text-slate-500 self-center">Save settings to apply exam changes.</span>
+            </div>
           </div>
-          <div>
-            <label className={labelClass}>Exam Date</label>
-            <input type="date" value={examDate} onChange={(e) => setExamDate(e.target.value)} className={inputClass} />
-          </div>
-        </div>
+        )}
       </div>
 
       {/* 3. Preferences */}

@@ -99,9 +99,13 @@ const MonthPlanner = () => {
 
     getUserByFirebaseUid(user.uid)
       .then((profile) => {
-        setSubjects(plannerService.getSubjects({ exam: profile?.exam, stream: profile?.stream }));
+        const resolved = plannerService.resolveProfileWithFallback(profile);
+        setSubjects(plannerService.getSubjects(resolved));
       })
-      .catch(console.error);
+      .catch(() => {
+        const fallback = plannerService.resolveProfileWithFallback(null);
+        setSubjects(plannerService.getSubjects(fallback));
+      });
   }, [user?.uid]);
 
   useEffect(() => {

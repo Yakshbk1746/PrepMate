@@ -18,7 +18,7 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const analytics = getAnalytics(app);
 const googleProvider = new GoogleAuthProvider();
-googleProvider.addScope('https://www.googleapis.com/auth/calendar.readonly');
+googleProvider.setCustomParameters({ prompt: 'select_account' });
 
 // Export auth, provider, firestore, and analytics
 export { auth, db, googleProvider, analytics };

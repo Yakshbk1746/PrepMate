@@ -1,7 +1,30 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
-const MiniCalendar = ({ viewDate, setViewDate, today, firstDay, daysInMonth }) => (
+const MiniCalendar = ({ viewDate, setViewDate, today, firstDay, daysInMonth }) => {
+  const [examLabel, setExamLabel] = useState('Exam');
+  const [daysLeft, setDaysLeft] = useState(null);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('signupProfile');
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed?.exam) setExamLabel(parsed.exam);
+      if (parsed?.examDate) {
+        const examDate = new Date(parsed.examDate);
+        if (!Number.isNaN(examDate.getTime())) {
+          const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+          const diffMs = examDate.getTime() - startOfToday.getTime();
+          setDaysLeft(Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24))));
+        }
+      }
+    } catch {
+      // ignore localStorage errors
+    }
+  }, [today]);
+
+  return (
   <div className="xl:col-span-4 h-fit bg-[#111327]/60 border border-white/5 rounded-[2.5rem] p-10 backdrop-blur-xl transition-all hover:border-white/10">
     <h2 className="text-center text-[10px] font-black uppercase tracking-[0.5em] text-slate-700 mb-10">Calendar</h2>
     <div className="flex justify-between items-center mb-8">
@@ -24,13 +47,14 @@ const MiniCalendar = ({ viewDate, setViewDate, today, firstDay, daysInMonth }) =
       })}
     </div>
     <div className="pt-10 border-t border-white/5 text-center group">
-      <p className="text-[10px] font-black text-slate-600 tracking-[0.5em] mb-4 uppercase">GATE Exam</p>
+      <p className="text-[10px] font-black text-slate-600 tracking-[0.5em] mb-4 uppercase">{examLabel} Exam</p>
       <div className="flex justify-center items-baseline gap-2 transition-transform group-hover:scale-110 duration-500">
-        <span className="text-4xl font-black text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.2)]">52</span>
+        <span className="text-4xl font-black text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.2)]">{daysLeft !== null ? daysLeft : '--'}</span>
         <span className="text-[10px] text-slate-600 uppercase tracking-widest font-black">days left</span>
       </div>
     </div>
   </div>
-);
+  );
+};
 
 export default MiniCalendar;

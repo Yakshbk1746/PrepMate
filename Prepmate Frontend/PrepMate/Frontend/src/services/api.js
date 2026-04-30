@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: 'http://localhost:8080/api',
+  baseURL: import.meta.env.BACKEND_URL,
 });
 
 // Deduplicate identical in-flight GET requests so concurrent callers reuse one network trip.
@@ -179,8 +179,15 @@ export const syncUser = async (payload) => {
 };
 
 export const getUserByFirebaseUid = async (uid) => {
-  const response = await api.get(`/users/firebase/${uid}`);
-  return response.data;
+  try {
+    const response = await api.get(`/users/firebase/${uid}`);
+    return response.data;
+  } catch (error) {
+    if (error?.response?.status === 404) {
+      return null;
+    }
+    throw error;
+  }
 };
 
 export const updateUserProfile = async (userId, payload) => {

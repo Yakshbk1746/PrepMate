@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import GlassCard from "./GlassCard";
 
@@ -7,6 +7,28 @@ const DAYS = ["S","M","T","W","T","F","S"];
 export default function CalenderCard() {
   const [calMonth, setCalMonth] = useState(new Date().getMonth());
   const [calYear, setCalYear] = useState(new Date().getFullYear());
+  const [examLabel, setExamLabel] = useState('Exam');
+  const [daysLeft, setDaysLeft] = useState(null);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('signupProfile');
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed?.exam) setExamLabel(parsed.exam);
+      if (parsed?.examDate) {
+        const examDate = new Date(parsed.examDate);
+        if (!Number.isNaN(examDate.getTime())) {
+          const today = new Date();
+          const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+          const diffMs = examDate.getTime() - startOfToday.getTime();
+          setDaysLeft(Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24))));
+        }
+      }
+    } catch {
+      // ignore localStorage errors
+    }
+  }, []);
 
   const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
   const firstDayOffset = new Date(calYear, calMonth, 1).getDay();
@@ -45,7 +67,7 @@ export default function CalenderCard() {
       </div>
 
       <p className="mt-4 text-sm text-white/60">
-        GATE Exam • <span className="text-white">52 days remaining</span>
+        {examLabel} Exam • <span className="text-white">{daysLeft !== null ? `${daysLeft} days remaining` : 'Set exam date in Settings'}</span>
       </p>
     </GlassCard>
   );

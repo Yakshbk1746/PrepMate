@@ -1,9 +1,9 @@
 
 
 import React, { useState } from 'react';
-import axios from 'axios';
 import { Link, useNavigate } from 'react-router-dom';
 import { registerWithEmail, loginWithGoogle } from '../firebase/authService';
+import { getUserByFirebaseUid, syncUser } from '../services/api';
 
 // Exam → Branch mapping
 // Backend devs: keep this in sync with your DB enums / exam schema
@@ -202,6 +202,9 @@ const StepIndicator = ({ currentStep, totalSteps, labels }) => (
   </div>
 );
 
+const normalizeEmail = (value) => (value || '').replace(/[\u00A0\u200B-\u200D\uFEFF]/g, '').trim();
+const isEmailValid = (value) => /\S+@\S+\.\S+/.test(value);
+
 
 // Main SignUp Component
 const SignUp = () => {
@@ -228,6 +231,8 @@ const SignUp = () => {
   const [globalError, setGlobalError] = useState('');
   const [loading, setLoading]         = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [isGoogleSignup, setIsGoogleSignup] = useState(false);
+  const [googleUser, setGoogleUser] = useState(null);
 
   const passwordStrength = getPasswordStrength(password);
   const branches = EXAM_BRANCHES[exam] || [];
@@ -242,10 +247,9 @@ const SignUp = () => {
   // Step 1 validation
   const validateStep1 = () => {
     const errs = {};
-    if (!email.trim())
-      errs.email = 'Email is required.';
-    else if (!/\S+@\S+\.\S+/.test(email))
-      errs.email = 'Enter a valid email address.';
+    const norm = normalizeEmail(email);
+    if (!norm) errs.email = 'Email is required.';
+    else if (!isEmailValid(norm)) errs.email = 'Enter a valid email address.';
     if (!password)
       errs.password = 'Password is required.';
     else if (password.length < 6)
@@ -270,6 +274,8 @@ const SignUp = () => {
 
   const handleNextStep = () => {
     setGlobalError('');
+    setIsGoogleSignup(false);
+    setGoogleUser(null);
     if (validateStep1()) setStep(2);
   };
 
@@ -281,30 +287,40 @@ const SignUp = () => {
 
     setLoading(true);
     try {
-      const user = await registerWithEmail(email, password);
+      let user = googleUser;
 
-      try {
-        const token = await user.getIdToken();
-        await axios.post('http://localhost:8080/api/users/sync', {
-          firebaseUid: user.uid,
-          email: user.email,
-          fullName: fullName,
-          exam: exam,
-          stream: branch,
-          examDate: examDate || null,
-          photoUrl: user.photoURL || ''
-        });
-        localStorage.setItem('signupProfile', JSON.stringify({ exam, branch, examDate }));
-      } catch (err) {
-        console.warn('[SignUp] Backend sync failed (non-fatal):', err.message);
+      if (!isGoogleSignup) {
+        const normEmail = normalizeEmail(email);
+        if (!isEmailValid(normEmail)) {
+          setErrors((prev) => ({ ...prev, email: 'Enter a valid email address.' }));
+          setStep(1);
+          return;
+        }
+        user = await registerWithEmail(normEmail, password);
       }
 
-      console.log('[SignUp] New user registered:', { uid: user.uid, email, fullName, exam, branch });
+      if (!user?.uid) {
+        throw new Error('Unable to complete signup. Please try again.');
+      }
+
+      await syncUser({
+        firebaseUid: user.uid,
+        email: user.email || normalizeEmail(email),
+        fullName: fullName.trim(),
+        exam,
+        stream: branch,
+        examDate: examDate || null,
+        photoUrl: user.photoURL || '',
+      });
+
+      localStorage.setItem('signupProfile', JSON.stringify({ exam, branch, examDate }));
+
+      console.log('[SignUp] New user registered:', { uid: user.uid, email: user.email, fullName, exam, branch, isGoogleSignup });
       navigate('/dashboard');
     } catch (err) {
       setGlobalError(err.message);
       // If Firebase error, go back to step 1 (e.g. email already in use)
-      setStep(1);
+      if (!isGoogleSignup) setStep(1);
     } finally {
       setLoading(false);
     }
@@ -313,11 +329,23 @@ const SignUp = () => {
   // Google signup — goes directly to step 2 for profile info
   const handleGoogleSignup = async () => {
     setGlobalError('');
+    setErrors({});
     setGoogleLoading(true);
     try {
       const user = await loginWithGoogle();
+      setGoogleUser(user);
+      setIsGoogleSignup(true);
+
+      const existing = await getUserByFirebaseUid(user.uid).catch(() => null);
+      if (existing?.id && existing?.exam && existing?.stream) {
+        setGlobalError('This Google account is already registered. Please sign in instead.');
+        setStep(1);
+        return;
+      }
+
       // Pre-fill name from Google profile if available
       if (user.displayName) setFullName(user.displayName);
+      if (user.email) setEmail(user.email);
       setStep(2);
     } catch (err) {
       setGlobalError(err.message);
@@ -562,7 +590,11 @@ const SignUp = () => {
                 <div className="flex gap-3 pt-1">
                   <button
                     type="button"
-                    onClick={() => setStep(1)}
+                    onClick={() => {
+                      setStep(1);
+                      setIsGoogleSignup(false);
+                      setGoogleUser(null);
+                    }}
                     className="
                       flex-1 py-2 px-4 rounded-xl font-semibold text-sm text-slate-600 dark:text-slate-400
                       bg-slate-100 dark:bg-white/[0.04] hover:bg-slate-200 dark:hover:bg-white/[0.08]

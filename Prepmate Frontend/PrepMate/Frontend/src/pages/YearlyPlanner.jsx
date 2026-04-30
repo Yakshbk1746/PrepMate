@@ -122,14 +122,30 @@ const YearlyPlanner = () => {
 
     getUserByFirebaseUid(user.uid)
       .then((profile) => {
-        const subjects = plannerService.getSubjects({ exam: profile?.exam, stream: profile?.stream });
+        const resolved = plannerService.resolveProfileWithFallback(profile);
+        const subjects = plannerService.getSubjects(resolved);
         const options = createSubjectOptions(subjects);
         if (options.length > 0) {
           setSubjectOptions(options);
         }
       })
-      .catch(console.error);
+      .catch(() => {
+        const resolved = plannerService.resolveProfileWithFallback(null);
+        const subjects = plannerService.getSubjects(resolved);
+        const options = createSubjectOptions(subjects);
+        if (options.length > 0) {
+          setSubjectOptions(options);
+        }
+      });
   }, [user?.uid]);
+
+  useEffect(() => {
+    if (subjectOptions.length === 0) return;
+    setNewGoal((prev) => {
+      const valid = subjectOptions.some((item) => item.id === prev.subjectId);
+      return valid ? prev : { ...prev, subjectId: subjectOptions[0].id };
+    });
+  }, [subjectOptions]);
 
   const getDeterministicTimeline = (item) => {
     const key = `${item?.subjectId || ''}:${item?.topic || ''}`;

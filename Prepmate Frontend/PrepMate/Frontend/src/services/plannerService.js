@@ -80,6 +80,8 @@ const UPSC_SUBJECTS = ['History', 'Geography', 'Polity', 'Economy', 'Environment
 const SSC_SUBJECTS = ['Quantitative Aptitude', 'Reasoning', 'English', 'General Awareness', 'Mock Tests', 'Revision'];
 const CLAT_SUBJECTS = ['Legal Reasoning', 'Logical Reasoning', 'English', 'Current Affairs', 'Quantitative Techniques', 'Mock Tests', 'Revision'];
 const NDA_SUBJECTS = ['Mathematics', 'General Ability Test', 'English', 'Science', 'Mock Tests', 'Revision'];
+const CUET_SUBJECTS = ['General Test', 'English', 'Mathematics', 'Domain Subjects', 'Mock Tests', 'Revision'];
+const OTHER_SUBJECTS = ['General Studies', 'Quantitative Aptitude', 'Reasoning', 'English', 'Mock Tests', 'Revision'];
 
 const EXAM_SUBJECTS = {
   gate: {
@@ -98,6 +100,8 @@ const EXAM_SUBJECTS = {
   'ssc chsl': SSC_SUBJECTS,
   clat: CLAT_SUBJECTS,
   nda: NDA_SUBJECTS,
+  cuet: CUET_SUBJECTS,
+  other: OTHER_SUBJECTS,
 };
 
 const FALLBACK_SUBJECTS = GATE_CSE_SUBJECTS;
@@ -127,6 +131,8 @@ const normalizeExamKey = (exam) => {
   if (e.includes('neet')) return 'neet';
   if (e.includes('clat')) return 'clat';
   if (e.includes('nda')) return 'nda';
+  if (e.includes('cuet')) return 'cuet';
+  if (e.includes('other') || e.includes('general')) return 'other';
   return 'gate';
 };
 
@@ -220,6 +226,28 @@ const getWeekRange = (year, month, weekNumber) => {
 
 // ── Main Service ──────────────────────────────────────────────────────────────
 export const plannerService = {
+
+  getStoredProfile() {
+    try {
+      const raw = localStorage.getItem('signupProfile');
+      if (!raw) return { exam: '', stream: '' };
+      const parsed = JSON.parse(raw);
+      return {
+        exam: parsed?.exam || '',
+        stream: parsed?.stream || parsed?.branch || '',
+      };
+    } catch {
+      return { exam: '', stream: '' };
+    }
+  },
+
+  resolveProfileWithFallback(profile) {
+    const stored = this.getStoredProfile();
+    return {
+      exam: profile?.exam || stored.exam || 'GATE',
+      stream: profile?.stream || stored.stream || '',
+    };
+  },
 
   resolveProfile(profileOrExam, maybeStream) {
     if (typeof profileOrExam === 'object' && profileOrExam !== null) {

@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { Target, CheckCircle2, Clock, Plus, GripVertical, Play, CheckSquare, Edit2, Trash2, Maximize2, Minimize2, Save, X, RefreshCw } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/authContext';
 import { plannerService } from '../services/plannerService';
 import { getTasks, createTask, updateTask, deleteTask, getUserByFirebaseUid, logTimerSession } from '../services/api';
@@ -19,7 +18,6 @@ function getInitialIntervalDays(confidence) {
 // ─── Main Component ─────────────────────────────────────────────────────────
 
 const DailyPlanner = () => {
-  const navigate = useNavigate();
   const { user, backendUserId } = useAuth();
   const [subjects, setSubjects] = useState(plannerService.getSubjects(DEFAULT_PROFILE));
 
@@ -254,25 +252,32 @@ const DailyPlanner = () => {
     setDraggedTaskId(null);
   };
 
-  const handleDeleteTask = (id) => {
-    deleteTask(id, backendUserId)
-      .then(() => {
-        setTasks((prev) => prev.filter((t) => t.id !== id));
-        showToast({ title: 'Task Deleted', message: 'Task removed from your plan.', type: 'info' });
-      })
-      .catch(console.error);
+  const resolveUserId = () => {
+    if (backendUserId) return backendUserId;
+    const fallback = localStorage.getItem('prepmateUserId');
+    const parsed = Number.parseInt(fallback, 10);
+    return Number.isInteger(parsed) ? parsed : null;
   };
 
-  const handleStartTimerFromTask = (task) => {
-    localStorage.setItem(
-      'prepmate:timer-prefill',
-      JSON.stringify({
-        subject: task.subject || '',
-        sessionName: task.title || 'Study Session',
+  const handleDeleteTask = (id) => {
+    const userId = resolveUserId();
+    if (!userId) {
+      showToast({ title: 'Unable to delete', message: 'User not synced yet. Please refresh and try again.', type: 'error' });
+      return;
+    }
+
+    const prevTasks = tasks;
+    setTasks((prev) => prev.filter((t) => t.id !== id));
+
+    deleteTask(id, userId)
+      .then(() => {
+        showToast({ title: 'Task Deleted', message: 'Task removed from your plan.', type: 'info' });
       })
-    );
-    navigate('/timers');
-    showToast({ title: 'Timer Ready', message: `Starting timer for ${task.subject || 'General'}.` });
+      .catch((error) => {
+        console.error(error);
+        setTasks(prevTasks);
+        showToast({ title: 'Delete failed', message: 'Could not delete the task. Please try again.', type: 'error' });
+      });
   };
 
   // ── Save Study Log ──
@@ -419,9 +424,6 @@ const DailyPlanner = () => {
                       </div>
 
                       <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => handleStartTimerFromTask(task)} className="p-2 hover:bg-emerald-100 dark:hover:bg-emerald-500/10 text-slate-500 hover:text-emerald-600 dark:hover:text-emerald-400 rounded-lg transition-colors" title="Start timer">
-                          <Play size={16} />
-                        </button>
                         <button onClick={() => openEditTaskModal(task)} className="p-2 hover:bg-slate-100 dark:hover:bg-white/5 text-slate-500 hover:text-slate-800 dark:hover:text-white rounded-lg transition-colors" title="Edit task">
                           <Edit2 size={16} />
                         </button>

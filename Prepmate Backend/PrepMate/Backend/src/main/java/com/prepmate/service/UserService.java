@@ -4,6 +4,8 @@ import com.prepmate.model.User;
 import com.prepmate.repository.UserRepository;
 import org.springframework.stereotype.Service;
 
+import java.util.Optional;
+
 @Service
 public class UserService {
 
@@ -15,10 +17,31 @@ public class UserService {
 
     public User syncUser(User user) {
         System.out.println("[UserService.syncUser] Syncing user with firebaseUid: " + user.getFirebaseUid());
-        
-        return userRepository.findByFirebaseUid(user.getFirebaseUid())
+
+        String incomingUid = user.getFirebaseUid() != null ? user.getFirebaseUid().trim() : "";
+        String incomingEmail = user.getEmail() != null ? user.getEmail().trim() : "";
+
+        if (incomingUid.isEmpty()) {
+            throw new RuntimeException("firebaseUid is required for sync");
+        }
+
+        if (!incomingEmail.isEmpty()) {
+            user.setEmail(incomingEmail);
+        }
+
+        Optional<User> existingCandidate = userRepository.findByFirebaseUid(incomingUid);
+        if (existingCandidate.isEmpty() && !incomingEmail.isEmpty()) {
+            // Handle migrated/legacy rows that were created without the current Firebase UID.
+            existingCandidate = userRepository.findByEmail(incomingEmail);
+        }
+
+        return existingCandidate
                 .map(existing -> {
                     System.out.println("[UserService.syncUser] Found existing user with id: " + existing.getId());
+
+                    if (existing.getFirebaseUid() == null || !existing.getFirebaseUid().equals(incomingUid)) {
+                        existing.setFirebaseUid(incomingUid);
+                    }
                     
                     if (user.getFullName() != null && !user.getFullName().trim().isEmpty()) {
                         System.out.println("[UserService.syncUser] Updating fullName to: " + user.getFullName());
@@ -48,6 +71,7 @@ public class UserService {
                 })
                 .orElseGet(() -> {
                     System.out.println("[UserService.syncUser] No existing user found, creating new user");
+                    user.setFirebaseUid(incomingUid);
                     User newUser = userRepository.save(user);
                     System.out.println("[UserService.syncUser] New user created with id: " + newUser.getId());
                     return newUser;
@@ -62,6 +86,13 @@ public class UserService {
     public User getUserByFirebaseUid(String uid) {
         return userRepository.findByFirebaseUid(uid)
                 .orElseThrow(() -> new RuntimeException("User not found with uid: " + uid));
+    }
+
+    public Optional<User> findUserByFirebaseUid(String uid) {
+        if (uid == null || uid.trim().isEmpty()) {
+            return Optional.empty();
+        }
+        return userRepository.findByFirebaseUid(uid.trim());
     }
 
     public User updateUser(Long id, User updated) {

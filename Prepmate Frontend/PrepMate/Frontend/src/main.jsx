@@ -6,13 +6,16 @@ import './index.css';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider } from './context/authContext';
 import { TimerProvider } from './context/TimerContext';
+import { HabitProvider } from './context/HabitContext';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <BrowserRouter>
     <AuthProvider>
       <ThemeProvider>
         <TimerProvider>
-          <App />
+          <HabitProvider>
+            <App />
+          </HabitProvider>
         </TimerProvider>
       </ThemeProvider>
     </AuthProvider>
