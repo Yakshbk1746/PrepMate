@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api',
+  baseURL: 'https://prepmate-tn24.onrender.com/api',
 });
 
 // Deduplicate identical in-flight GET requests so concurrent callers reuse one network trip.

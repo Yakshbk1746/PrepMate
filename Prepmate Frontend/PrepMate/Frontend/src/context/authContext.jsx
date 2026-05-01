@@ -33,7 +33,7 @@ export const AuthProvider = ({ children }) => {
         };
 
         // const response = await axios.post('http://localhost:8080/api/users/sync', payload);
-        const response = await axios.post(`${import.meta.env.VITE_API_BASE_URL}/users/sync`, payload);
+        const response = await axios.post('https://prepmate-tn24.onrender.com/api/users/sync', payload);
         const syncedUserId = response?.data?.id ?? null;
 
         if (syncedUserId !== null) {
